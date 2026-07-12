@@ -40,7 +40,9 @@ export default async function DepartmentsTab() {
         </select>
         <select name="parent_department_id" className="rounded border border-border px-3 py-2">
           <option value="">Parent department (optional)</option>
-          {/* populated from the same departments list once there's more than one */}
+          {departments?.map((d: any) => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
         </select>
         <button type="submit" className="rounded bg-teal px-3 py-2 text-white">Add Department</button>
       </form>
@@ -49,16 +51,24 @@ export default async function DepartmentsTab() {
         <thead>
           <tr className="bg-paper text-left text-sm text-ink-soft">
             <th className="p-3">Name</th>
+            <th className="p-3">Head</th>
+            <th className="p-3">Parent</th>
             <th className="p-3">Status</th>
           </tr>
         </thead>
         <tbody>
-          {departments?.map((d: any) => (
-            <tr key={d.id} className="border-t border-border">
-              <td className="p-3">{d.name}</td>
-              <td className="p-3">{d.status}</td>
-            </tr>
-          ))}
+          {departments?.map((d: any) => {
+            const head = employees?.find((e: any) => e.id === d.head_employee_id);
+            const parent = departments?.find((p: any) => p.id === d.parent_department_id);
+            return (
+              <tr key={d.id} className="border-t border-border">
+                <td className="p-3">{d.name}</td>
+                <td className="p-3">{head?.name ?? "—"}</td>
+                <td className="p-3">{parent?.name ?? "—"}</td>
+                <td className="p-3">{d.status}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

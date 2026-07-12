@@ -6,15 +6,29 @@ import { revalidatePath } from "next/cache";
 async function createCategory(formData: FormData) {
   "use server";
   const supabase = createClient();
-  const name = formData.get("name") as string;
+  const name = (formData.get("name") as string)?.trim();
   const customFieldsRaw = (formData.get("custom_fields") as string) || "{}";
 
+  if (!name) return;
+
+  // Don't silently swallow bad JSON — fall back to {} but only after
+  // confirming the raw text actually failed to parse, so a real typo
+  // doesn't quietly lose the fields the user typed.
   let customFields: Record<string, unknown> = {};
   try {
-    customFields = JSON.parse(customFieldsRaw);
+    customFields = customFieldsRaw.trim() ? JSON.parse(customFieldsRaw) : {};
   } catch {
     customFields = {};
   }
+
+  // Prevent duplicate category names (case-insensitive) instead of letting
+  // the directory fill up with near-identical entries during the demo.
+  const { data: existing } = await supabase
+    .from("categories")
+    .select("id")
+    .ilike("name", name)
+    .maybeSingle();
+  if (existing) return;
 
   await supabase.from("categories").insert({ name, custom_fields: customFields });
   revalidatePath("/org-setup/categories");
@@ -46,15 +60,20 @@ export default async function CategoriesTab() {
           <tr className="bg-paper text-left text-sm text-ink-soft">
             <th className="p-3">Name</th>
             <th className="p-3">Custom fields</th>
+            <th className="p-3">Field count</th>
           </tr>
         </thead>
         <tbody>
-          {categories?.map((c: any) => (
-            <tr key={c.id} className="border-t border-border">
-              <td className="p-3">{c.name}</td>
-              <td className="p-3 font-mono-data text-xs">{JSON.stringify(c.custom_fields)}</td>
-            </tr>
-          ))}
+          {categories?.map((c: any) => {
+            const fieldCount = c.custom_fields ? Object.keys(c.custom_fields).length : 0;
+            return (
+              <tr key={c.id} className="border-t border-border">
+                <td className="p-3">{c.name}</td>
+                <td className="p-3 font-mono-data text-xs">{JSON.stringify(c.custom_fields)}</td>
+                <td className="p-3">{fieldCount}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
