@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { requestTransfer } from "@/lib/business-logic";
+import { requestTransfer, logActivity } from "@/lib/business-logic";
 import { getCurrentEmployee } from "@/lib/auth";
 
 export async function POST(req: Request) {
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
 
   const { data: asset } = await supabase
     .from("assets")
-    .select("current_holder_employee_id")
+    .select("name, asset_tag, current_holder_employee_id")
     .eq("id", assetId)
     .single();
 
@@ -24,6 +24,15 @@ export async function POST(req: Request) {
     asset?.current_holder_employee_id ?? null,
     toEmployeeId,
     actor.id
+  );
+
+  const { data: toEmp } = await supabase.from("employees").select("name").eq("id", toEmployeeId).single();
+  await logActivity(
+    supabase,
+    "Request Asset Transfer",
+    `Requested transfer of ${asset?.name ?? "asset"} (${asset?.asset_tag ?? assetId}) to ${toEmp?.name ?? "an employee"}.`,
+    actor.id,
+    actor.name
   );
 
   return NextResponse.json({ ok: true });

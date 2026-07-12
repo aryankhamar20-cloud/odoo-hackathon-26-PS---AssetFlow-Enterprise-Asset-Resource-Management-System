@@ -35,7 +35,6 @@ export function BookResourceForm({
         resourceAssetId: assetId,
         startTime: new Date(start).toISOString(),
         endTime: new Date(end).toISOString(),
-        employeeId,
       }),
     });
     const result = await res.json();
@@ -45,6 +44,11 @@ export function BookResourceForm({
       setStart("");
       setEnd("");
       router.refresh();
+      return;
+    }
+
+    if (res.status === 401) {
+      setError("Your session expired — log in again to book.");
       return;
     }
 

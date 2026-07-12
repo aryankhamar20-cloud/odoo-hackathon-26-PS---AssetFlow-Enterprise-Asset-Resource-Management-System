@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { StatusChip } from "@/components/StatusChip";
 import { AssetTagChip } from "@/components/AssetTagChip";
 import { TransferApproveButton } from "@/components/TransferApproveButton";
+import { TransferRejectButton } from "@/components/TransferRejectButton";
 import { ReturnAssetButton } from "@/components/ReturnAssetButton";
 
 export default async function AllocationsPage() {
@@ -15,7 +16,7 @@ export default async function AllocationsPage() {
       .order("created_at", { ascending: false }),
     supabase
       .from("allocations")
-      .select("id, asset_id, expected_return_date, created_at, assets:asset_id(name, asset_tag, status), employees:employee_id(name)")
+      .select("id, asset_id, expected_return_date, created_at, assets:asset_id(name, asset_tag, status), employees:employee_id(name), departments:department_id(name)")
       .is("returned_at", null)
       .order("created_at", { ascending: false }),
   ]);
@@ -42,7 +43,10 @@ export default async function AllocationsPage() {
                 <td className="p-3">{t.assets?.name} <AssetTagChip tag={t.assets?.asset_tag} /></td>
                 <td className="p-3">{t.from_employee?.name ?? "—"}</td>
                 <td className="p-3">{t.to_employee?.name}</td>
-                <td className="p-3"><TransferApproveButton transferRequestId={t.id} /></td>
+                <td className="p-3 flex gap-2">
+                  <TransferApproveButton transferRequestId={t.id} />
+                  <TransferRejectButton transferRequestId={t.id} />
+                </td>
               </tr>
             ))}
             {(!transfers || transfers.length === 0) && (
@@ -68,7 +72,7 @@ export default async function AllocationsPage() {
             {activeAllocations?.map((a: any) => (
               <tr key={a.id} className="border-t border-border">
                 <td className="p-3">{a.assets?.name} <AssetTagChip tag={a.assets?.asset_tag} /></td>
-                <td className="p-3">{a.employees?.name ?? "—"}</td>
+                <td className="p-3">{a.employees?.name ?? (a.departments?.name ? `${a.departments.name} (dept.)` : "—")}</td>
                 <td className="p-3">{a.expected_return_date ?? "—"}</td>
                 <td className="p-3">{a.assets?.status && <StatusChip status={a.assets.status} />}</td>
                 <td className="p-3"><ReturnAssetButton allocationId={a.id} assetId={a.asset_id} /></td>

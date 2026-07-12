@@ -45,6 +45,7 @@ export default async function MaintenancePage() {
                   requestId={r.id}
                   status={r.status}
                   approverEmployeeId={currentEmployee?.id ?? null}
+                  canManage={currentEmployee?.role === "asset_manager" || currentEmployee?.role === "admin"}
                 />
               </td>
             </tr>

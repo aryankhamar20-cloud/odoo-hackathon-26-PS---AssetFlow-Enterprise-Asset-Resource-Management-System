@@ -1,11 +1,15 @@
 // Owner: shared (Asset Registration) — PRD 5.4
+// Role table: "Asset Manager: Register/allocate assets" — Admin included
+// since Admin can do anything an Asset Manager can for setup purposes.
 import { createClient } from "@/lib/supabase/server";
-import { generateAssetTag } from "@/lib/business-logic";
+import { generateAssetTag, logActivity } from "@/lib/business-logic";
+import { requireRole } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
 async function createAsset(formData: FormData) {
   "use server";
   const supabase = createClient();
+  const acting = await requireRole(supabase, ["asset_manager", "admin"]);
 
   const name = (formData.get("name") as string)?.trim();
   const categoryId = (formData.get("category_id") as string) || null;
@@ -42,11 +46,14 @@ async function createAsset(formData: FormData) {
 
   if (error || !inserted) return;
 
+  await logActivity(supabase, "Register Asset", `Registered new asset "${name}" (${assetTag}).`, acting.id, acting.name);
+
   redirect(`/assets/${inserted.id}`);
 }
 
 export default async function NewAssetPage() {
   const supabase = createClient();
+  await requireRole(supabase, ["asset_manager", "admin"]);
   const { data: categories } = await supabase.from("categories").select("id, name").order("name");
 
   return (

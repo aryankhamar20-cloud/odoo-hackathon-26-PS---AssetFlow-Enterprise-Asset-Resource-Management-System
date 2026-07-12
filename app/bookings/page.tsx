@@ -3,6 +3,7 @@ import { getCurrentEmployee } from "@/lib/auth";
 import { computeBookingStatus } from "@/lib/business-logic";
 import { BookResourceForm } from "@/components/BookResourceForm";
 import { CancelBookingButton } from "@/components/CancelBookingButton";
+import { RescheduleBookingButton } from "@/components/RescheduleBookingButton";
 import { AssetTagChip } from "@/components/AssetTagChip";
 
 export default async function BookingsPage() {
@@ -44,7 +45,14 @@ export default async function BookingsPage() {
                 <td className="p-3">{fmt(b.start_time)} – {fmt(b.end_time)}</td>
                 <td className="p-3">{status}</td>
                 <td className="p-3">
-                  {status === "Upcoming" && <CancelBookingButton bookingId={b.id} />}
+                  {status === "Upcoming" && (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex gap-1">
+                        <CancelBookingButton bookingId={b.id} />
+                        <RescheduleBookingButton bookingId={b.id} />
+                      </div>
+                    </div>
+                  )}
                 </td>
               </tr>
             );

@@ -1,11 +1,14 @@
 // Owner: Nishtha
 // Categories tab — Name, optional JSON custom_fields.
 import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth";
+import { logActivity } from "@/lib/business-logic";
 import { revalidatePath } from "next/cache";
 
 async function createCategory(formData: FormData) {
   "use server";
   const supabase = createClient();
+  const acting = await requireRole(supabase, ["admin"]);
   const name = (formData.get("name") as string)?.trim();
   const customFieldsRaw = (formData.get("custom_fields") as string) || "{}";
 
@@ -31,11 +34,13 @@ async function createCategory(formData: FormData) {
   if (existing) return;
 
   await supabase.from("categories").insert({ name, custom_fields: customFields });
+  await logActivity(supabase, "Create Category", `Created asset category "${name}".`, acting.id, acting.name);
   revalidatePath("/org-setup/categories");
 }
 
 export default async function CategoriesTab() {
   const supabase = createClient();
+  await requireRole(supabase, ["admin"]);
   const { data: categories } = await supabase
     .from("categories")
     .select("*")

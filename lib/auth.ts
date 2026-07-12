@@ -3,6 +3,7 @@
 // "who is doing this" — allocation requester, transfer requester, maintenance
 // approver, etc. Never trust a client-submitted employee id for this.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { redirect } from "next/navigation";
 
 export interface CurrentEmployee {
   id: string;
@@ -26,4 +27,22 @@ export async function getCurrentEmployee(
 
   if (!data) return null;
   return data as CurrentEmployee;
+}
+
+// Page-level role gate for Server Components. Redirecting unauthenticated/
+// unauthorized visitors here matters because the sidebar only HIDES links
+// for the wrong role — that's UI convenience, not enforcement. Without this,
+// anyone logged in could type the URL directly and use an Admin-only screen.
+export async function requireRole(
+  supabase: SupabaseClient,
+  allowedRoles: CurrentEmployee["role"][]
+): Promise<CurrentEmployee> {
+  const employee = await getCurrentEmployee(supabase);
+  if (!employee) {
+    redirect("/login");
+  }
+  if (!allowedRoles.includes(employee.role)) {
+    redirect("/dashboard");
+  }
+  return employee;
 }

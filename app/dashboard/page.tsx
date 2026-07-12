@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { KpiCard } from "@/components/KpiCard";
+import { getCurrentEmployee } from "@/lib/auth";
 
 export default async function DashboardPage() {
   const supabase = createClient();
+  const currentEmployee = await getCurrentEmployee(supabase);
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date();
@@ -35,9 +37,37 @@ export default async function DashboardPage() {
       .lte("expected_return_date", new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)),
   ]);
 
+  const role = currentEmployee?.role;
+  const quickActions = [
+    { href: "/assets/new", label: "Register Asset", show: role === "asset_manager" || role === "admin" },
+    { href: "/org-setup/employees", label: "Promote Employee", show: role === "admin" },
+    { href: "/bookings", label: "Book a Resource", show: true },
+    { href: "/maintenance", label: "Raise Maintenance Request", show: true },
+    {
+      href: "/allocations",
+      label: "Review Pending Transfers",
+      show: role === "asset_manager" || role === "department_head" || role === "admin",
+    },
+  ].filter((a) => a.show);
+
   return (
     <div>
       <h1 className="font-display text-2xl font-bold mb-4">Dashboard</h1>
+
+      {quickActions.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {quickActions.map((a) => (
+            <a
+              key={a.href}
+              href={a.href}
+              className="rounded border border-teal px-3 py-2 text-sm text-teal hover:bg-teal-soft"
+            >
+              {a.label}
+            </a>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <KpiCard label="Assets Available" value={available ?? 0} />
         <KpiCard label="Assets Allocated" value={allocated ?? 0} />

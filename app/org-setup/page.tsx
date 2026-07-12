@@ -1,7 +1,13 @@
 // Admin-only landing page for Organization Setup — links to the three tabs.
 // Each tab is its own file/route so each teammate can build and push theirs
 // independently: departments (Dhruv), categories (Nishtha), employees (Aayushi).
-export default function OrgSetupPage() {
+import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth";
+
+export default async function OrgSetupPage() {
+  const supabase = createClient();
+  await requireRole(supabase, ["admin"]);
+
   const tabs = [
     { href: "/org-setup/departments", label: "Departments" },
     { href: "/org-setup/categories", label: "Categories" },

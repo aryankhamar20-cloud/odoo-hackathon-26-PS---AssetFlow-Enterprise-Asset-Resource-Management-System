@@ -28,15 +28,26 @@ export interface AllocateResult {
   offerTransferRequest?: boolean;
 }
 
+// PRD 5.5: allocation target is EITHER an employee OR a department, never
+// neither and never both. Pass exactly one of the two.
+export interface AllocateTarget {
+  employeeId?: string;
+  departmentId?: string;
+}
+
 export async function allocateAsset(
   supabase: SupabaseClient,
   assetId: string,
-  employeeId: string,
+  target: AllocateTarget,
   expectedReturn?: string
 ): Promise<AllocateResult> {
+  if (!target.employeeId && !target.departmentId) {
+    return { blocked: true, message: "Choose an employee or a department to allocate to." };
+  }
+
   const { data: asset, error } = await supabase
     .from("assets")
-    .select("status, current_holder_employee_id")
+    .select("status, current_holder_employee_id, current_holder_department_id")
     .eq("id", assetId)
     .single();
 
@@ -53,6 +64,13 @@ export async function allocateAsset(
         .eq("id", asset.current_holder_employee_id)
         .single();
       if (holder?.name) holderName = holder.name;
+    } else if (asset.current_holder_department_id) {
+      const { data: dept } = await supabase
+        .from("departments")
+        .select("name")
+        .eq("id", asset.current_holder_department_id)
+        .single();
+      if (dept?.name) holderName = `the ${dept.name} department`;
     }
     return {
       blocked: true,
@@ -63,14 +81,19 @@ export async function allocateAsset(
 
   const { error: insertError } = await supabase.from("allocations").insert({
     asset_id: assetId,
-    employee_id: employeeId,
+    employee_id: target.employeeId ?? null,
+    department_id: target.departmentId ?? null,
     expected_return_date: expectedReturn ?? null,
   });
   if (insertError) return { blocked: true, message: insertError.message };
 
   await supabase
     .from("assets")
-    .update({ status: "Allocated", current_holder_employee_id: employeeId })
+    .update({
+      status: "Allocated",
+      current_holder_employee_id: target.employeeId ?? null,
+      current_holder_department_id: target.departmentId ?? null,
+    })
     .eq("id", assetId);
 
   return { blocked: false };
@@ -209,6 +232,68 @@ export async function cancelBooking(supabase: SupabaseClient, bookingId: string)
   return supabase.from("bookings").update({ status: "Cancelled" }).eq("id", bookingId);
 }
 
+// PRD 5.6: "Cancel/reschedule allowed while Upcoming." Reschedule re-runs
+// the same overlap rule against the NEW time range, excluding this booking
+// itself from the conflict check.
+export async function rescheduleBooking(
+  supabase: SupabaseClient,
+  bookingId: string,
+  newStart: string,
+  newEnd: string
+): Promise<BookResult> {
+  const { data: booking, error } = await supabase
+    .from("bookings")
+    .select("id, resource_asset_id, status")
+    .eq("id", bookingId)
+    .single();
+
+  if (error || !booking) return { blocked: true };
+  if (booking.status !== "Upcoming") {
+    return { blocked: true };
+  }
+
+  const { data: conflicts, error: conflictError } = await supabase
+    .from("bookings")
+    .select("id, start_time, end_time, booked_by_employee_id")
+    .eq("resource_asset_id", booking.resource_asset_id)
+    .neq("status", "Cancelled")
+    .neq("id", bookingId)
+    .lt("start_time", newEnd)
+    .gt("end_time", newStart);
+
+  if (conflictError) return { blocked: true };
+
+  if (conflicts && conflicts.length > 0) {
+    const conflict = conflicts[0] as any;
+    let bookedByName: string | undefined;
+    if (conflict.booked_by_employee_id) {
+      const { data: booker } = await supabase
+        .from("employees")
+        .select("name")
+        .eq("id", conflict.booked_by_employee_id)
+        .single();
+      bookedByName = booker?.name;
+    }
+    return {
+      blocked: true,
+      conflictingBooking: {
+        id: conflict.id,
+        start_time: conflict.start_time,
+        end_time: conflict.end_time,
+        bookedByName,
+      },
+    };
+  }
+
+  const { error: updateError } = await supabase
+    .from("bookings")
+    .update({ start_time: newStart, end_time: newEnd })
+    .eq("id", bookingId);
+  if (updateError) return { blocked: true };
+
+  return { blocked: false };
+}
+
 type BookingStatusRaw = "Upcoming" | "Ongoing" | "Completed" | "Cancelled";
 
 export function computeBookingStatus(
@@ -283,6 +368,41 @@ export async function resolveMaintenance(supabase: SupabaseClient, requestId: st
   await supabase.from("assets").update({ status: "Available" }).eq("id", req.asset_id);
 }
 
+// ---------- Terminal status changes (Lost / Retired / Disposed) ----------
+// These statuses exist in the schema and StatusChip already renders them,
+// but nothing in the allocate/book/maintenance flows ever sets them — this
+// is the only path to reach them, deliberately separate from those flows.
+export type TerminalAssetStatus = "Lost" | "Retired" | "Disposed";
+
+export async function setAssetStatus(
+  supabase: SupabaseClient,
+  assetId: string,
+  newStatus: TerminalAssetStatus
+) {
+  // Clearing the holder fields too: an asset marked Lost/Retired/Disposed
+  // shouldn't still show as "held by" someone in the directory/history views.
+  return supabase
+    .from("assets")
+    .update({
+      status: newStatus,
+      current_holder_employee_id: null,
+      current_holder_department_id: null,
+    })
+    .eq("id", assetId);
+}
+
+// ---------- Transfer rejection ----------
+export async function rejectTransfer(
+  supabase: SupabaseClient,
+  transferRequestId: string,
+  approverEmployeeId: string
+) {
+  return supabase
+    .from("transfer_requests")
+    .update({ status: "Rejected", approved_by: approverEmployeeId })
+    .eq("id", transferRequestId);
+}
+
 // ---------- Role change guard ----------
 // Call this from the Employee Directory action ONLY. Never expose a path
 // that lets a user set their own role.
@@ -304,4 +424,134 @@ export async function changeEmployeeRole(
     throw new Error("Self-elevation is not allowed.");
   }
   return supabase.from("employees").update({ role: newRole }).eq("id", targetEmployeeId);
+}
+
+// ---------- Activity log ----------
+// Fire-and-forget-ish: called after every successful mutation across the
+// app. actorEmployeeId is null only for genuinely system-generated entries;
+// every user-triggered call site has a real employee from getCurrentEmployee.
+export async function logActivity(
+  supabase: SupabaseClient,
+  action: string,
+  details: string,
+  actorEmployeeId: string | null,
+  actorName: string
+) {
+  return supabase.from("activity_logs").insert({
+    action,
+    details,
+    actor_employee_id: actorEmployeeId,
+    actor_name: actorName,
+  });
+}
+
+// ---------- Audit cycles ----------
+// Requires migration_02_audit_reports_log.sql to have been run (adds
+// audit_cycles.name / scope_location / lead_auditor_employee_id and
+// audit_items.checked_at — the base audit_cycles/audit_items tables
+// themselves already existed in schema.sql from the original scaffold).
+export interface AuditScope {
+  departmentId?: string;
+  location?: string;
+}
+
+export async function createAuditCycle(
+  supabase: SupabaseClient,
+  name: string,
+  scope: AuditScope,
+  dateRangeStart: string | null,
+  dateRangeEnd: string | null,
+  leadAuditorEmployeeId: string | null
+): Promise<string> {
+  if (!scope.departmentId && !scope.location) {
+    throw new Error("Choose a department or a location to scope this audit.");
+  }
+
+  // Resolve which assets fall in scope. Department scope = assets currently
+  // held by that department directly, OR held by an employee who belongs
+  // to it. Location scope = assets whose location field matches exactly.
+  let assetIds: string[] = [];
+  if (scope.departmentId) {
+    const { data: deptEmployees } = await supabase
+      .from("employees")
+      .select("id")
+      .eq("department_id", scope.departmentId);
+    const employeeIds = (deptEmployees ?? []).map((e: any) => e.id as string);
+
+    const orParts = [`current_holder_department_id.eq.${scope.departmentId}`];
+    if (employeeIds.length > 0) {
+      orParts.push(`current_holder_employee_id.in.(${employeeIds.join(",")})`);
+    }
+    const { data: assets } = await supabase.from("assets").select("id").or(orParts.join(","));
+    assetIds = (assets ?? []).map((a: any) => a.id as string);
+  } else if (scope.location) {
+    const { data: assets } = await supabase.from("assets").select("id").eq("location", scope.location);
+    assetIds = (assets ?? []).map((a: any) => a.id as string);
+  }
+
+  const { data: cycle, error } = await supabase
+    .from("audit_cycles")
+    .insert({
+      name,
+      scope_department_id: scope.departmentId ?? null,
+      scope_location: scope.location ?? null,
+      date_range_start: dateRangeStart,
+      date_range_end: dateRangeEnd,
+      lead_auditor_employee_id: leadAuditorEmployeeId,
+      status: "Open",
+    })
+    .select("id")
+    .single();
+  if (error || !cycle) throw error ?? new Error("Could not create audit cycle.");
+
+  if (assetIds.length > 0) {
+    const items = assetIds.map((assetId) => ({ audit_cycle_id: cycle.id, asset_id: assetId }));
+    const { error: itemsError } = await supabase.from("audit_items").insert(items);
+    if (itemsError) throw itemsError;
+  }
+
+  return cycle.id as string;
+}
+
+export async function checkAuditItem(
+  supabase: SupabaseClient,
+  auditItemId: string,
+  verificationStatus: "Verified" | "Missing" | "Damaged",
+  checkedByEmployeeId: string,
+  notes?: string
+) {
+  return supabase
+    .from("audit_items")
+    .update({
+      verification_status: verificationStatus,
+      auditor_employee_id: checkedByEmployeeId,
+      notes: notes ?? null,
+      checked_at: new Date().toISOString(),
+    })
+    .eq("id", auditItemId);
+}
+
+// Closing an open audit auto-flips any item still marked "Missing" to the
+// asset's terminal Lost status — same mechanism as AssetStatusControl,
+// reused rather than duplicated.
+export async function closeAuditCycle(
+  supabase: SupabaseClient,
+  auditCycleId: string
+): Promise<{ missingCount: number }> {
+  const { data: items } = await supabase
+    .from("audit_items")
+    .select("asset_id, verification_status")
+    .eq("audit_cycle_id", auditCycleId);
+
+  const missingAssetIds = (items ?? [])
+    .filter((i: any) => i.verification_status === "Missing")
+    .map((i: any) => i.asset_id as string);
+
+  for (const assetId of missingAssetIds) {
+    await setAssetStatus(supabase, assetId, "Lost");
+  }
+
+  await supabase.from("audit_cycles").update({ status: "Closed" }).eq("id", auditCycleId);
+
+  return { missingCount: missingAssetIds.length };
 }
