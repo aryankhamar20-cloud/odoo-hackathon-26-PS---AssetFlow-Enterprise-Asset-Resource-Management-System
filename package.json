@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "vite:dev": "vite",
+    "vite:build": "vite build",
+    "vite:preview": "vite preview --port 5173"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -19,9 +22,11 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.6",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^5.3.4"
   }
 }
