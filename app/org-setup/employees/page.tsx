@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 async function updateRole(formData: FormData) {
   "use server";
   const supabase = createClient();
-  const actingEmployeeId = formData.get("acting_employee_id") as string; // TODO: pull from session once auth wiring lands
+  const actingEmployeeId = formData.get("acting_employee_id") as string;
   const targetEmployeeId = formData.get("employee_id") as string;
   const newRole = formData.get("role") as
     | "employee"
@@ -21,12 +21,31 @@ async function updateRole(formData: FormData) {
   revalidatePath("/org-setup/employees");
 }
 
+// Resolves the currently logged-in admin's employees.id from the Supabase
+// auth session, so the self-elevation guard in changeEmployeeRole() has a
+// real actingEmployeeId to check against instead of a blank string.
+async function getActingEmployeeId(supabase: ReturnType<typeof createClient>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: me } = await supabase
+    .from("employees")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .single();
+  return me?.id ?? null;
+}
+
 export default async function EmployeeDirectoryTab() {
   const supabase = createClient();
-  const { data: employees } = await supabase
-    .from("employees")
-    .select("id, name, email, role, status, department_id")
-    .order("created_at", { ascending: false });
+  const [{ data: employees }, actingEmployeeId] = await Promise.all([
+    supabase
+      .from("employees")
+      .select("id, name, email, role, status, department_id")
+      .order("created_at", { ascending: false }),
+    getActingEmployeeId(supabase),
+  ]);
 
   const roles = ["employee", "department_head", "asset_manager", "admin"];
 
@@ -44,27 +63,33 @@ export default async function EmployeeDirectoryTab() {
           </tr>
         </thead>
         <tbody>
-          {employees?.map((e: any) => (
-            <tr key={e.id} className="border-t border-border">
-              <td className="p-3">{e.name}</td>
-              <td className="p-3">{e.email}</td>
-              <td className="p-3 capitalize">{e.role.replace("_", " ")}</td>
-              <td className="p-3">{e.status}</td>
-              <td className="p-3">
-                <form action={updateRole} className="flex gap-2">
-                  {/* TODO: replace hidden acting_employee_id with the real logged-in admin's id from session */}
-                  <input type="hidden" name="acting_employee_id" value="" />
-                  <input type="hidden" name="employee_id" value={e.id} />
-                  <select name="role" defaultValue={e.role} className="rounded border border-border px-2 py-1 text-sm">
-                    {roles.map((r) => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
-                  <button type="submit" className="rounded bg-teal px-2 py-1 text-xs text-white">Save</button>
-                </form>
-              </td>
-            </tr>
-          ))}
+          {employees?.map((e: any) => {
+            const isSelf = actingEmployeeId === e.id;
+            return (
+              <tr key={e.id} className="border-t border-border">
+                <td className="p-3">{e.name}</td>
+                <td className="p-3">{e.email}</td>
+                <td className="p-3 capitalize">{e.role.replace("_", " ")}</td>
+                <td className="p-3">{e.status}</td>
+                <td className="p-3">
+                  {isSelf ? (
+                    <span className="text-xs text-ink-soft">Can't change your own role</span>
+                  ) : (
+                    <form action={updateRole} className="flex gap-2">
+                      <input type="hidden" name="acting_employee_id" value={actingEmployeeId ?? ""} />
+                      <input type="hidden" name="employee_id" value={e.id} />
+                      <select name="role" defaultValue={e.role} className="rounded border border-border px-2 py-1 text-sm">
+                        {roles.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      <button type="submit" className="rounded bg-teal px-2 py-1 text-xs text-white">Save</button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
