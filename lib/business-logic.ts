@@ -150,7 +150,7 @@ export async function approveTransfer(
 // ---------- Booking overlap check (CORE) ----------
 export interface BookResult {
   blocked: boolean;
-  conflictingBooking?: { id: string; start_time: string; end_time: string };
+  conflictingBooking?: { id: string; start_time: string; end_time: string; bookedByName?: string };
 }
 
 export async function bookResource(
@@ -164,7 +164,7 @@ export async function bookResource(
   // i.e. existing.start < new.end AND existing.end > new.start
   const { data: conflicts, error } = await supabase
     .from("bookings")
-    .select("id, start_time, end_time")
+    .select("id, start_time, end_time, booked_by_employee_id")
     .eq("resource_asset_id", resourceAssetId)
     .neq("status", "Cancelled")
     .lt("start_time", endTime)
@@ -173,7 +173,25 @@ export async function bookResource(
   if (error) return { blocked: true };
 
   if (conflicts && conflicts.length > 0) {
-    return { blocked: true, conflictingBooking: conflicts[0] };
+    const conflict = conflicts[0] as any;
+    let bookedByName: string | undefined;
+    if (conflict.booked_by_employee_id) {
+      const { data: booker } = await supabase
+        .from("employees")
+        .select("name")
+        .eq("id", conflict.booked_by_employee_id)
+        .single();
+      bookedByName = booker?.name;
+    }
+    return {
+      blocked: true,
+      conflictingBooking: {
+        id: conflict.id,
+        start_time: conflict.start_time,
+        end_time: conflict.end_time,
+        bookedByName,
+      },
+    };
   }
 
   const { error: insertError } = await supabase.from("bookings").insert({
@@ -185,6 +203,10 @@ export async function bookResource(
   if (insertError) return { blocked: true };
 
   return { blocked: false };
+}
+
+export async function cancelBooking(supabase: SupabaseClient, bookingId: string) {
+  return supabase.from("bookings").update({ status: "Cancelled" }).eq("id", bookingId);
 }
 
 type BookingStatusRaw = "Upcoming" | "Ongoing" | "Completed" | "Cancelled";
@@ -228,6 +250,24 @@ export async function rejectMaintenance(
   await supabase
     .from("maintenance_requests")
     .update({ status: "Rejected", approved_by: approverEmployeeId })
+    .eq("id", requestId);
+}
+
+export async function assignTechnician(
+  supabase: SupabaseClient,
+  requestId: string,
+  technicianName: string
+) {
+  await supabase
+    .from("maintenance_requests")
+    .update({ status: "Technician Assigned", technician_name: technicianName })
+    .eq("id", requestId);
+}
+
+export async function startMaintenanceProgress(supabase: SupabaseClient, requestId: string) {
+  await supabase
+    .from("maintenance_requests")
+    .update({ status: "In Progress" })
     .eq("id", requestId);
 }
 
