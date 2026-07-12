@@ -21,7 +21,7 @@ See `AssetFlow_Structure_Plan.md` for the full feature-by-feature breakdown of b
 
 ## Setup
 1. `npm install`
-2. Create a Supabase project. In the SQL editor, run `supabase/schema.sql`, then (optional, time-permitting) `supabase/rls.sql`.
+2. Create a Supabase project. In the SQL editor, run `supabase/schema.sql`, then `supabase/migration_02_audit_reports_log.sql` (required — adds Activity Log + finishes Audit Cycles), then (optional, time-permitting) `supabase/rls.sql`.
 3. `cp .env.local.example .env.local` and fill in your Supabase URL + anon key + service role key.
 4. `npm run dev`
 
@@ -38,5 +38,7 @@ See `AssetFlow_Structure_Plan.md` for the full feature-by-feature breakdown of b
 - Single branch: keep everything on `main`, commit hourly under your own GitHub account.
 
 ## Cut-scope order if behind schedule
-Audit Cycles → Advanced Reports (keep plain KPI cards) → Activity Logs → RLS (fall back to the checks already in `lib/business-logic.ts`) → photo upload (URL text field) → booking timeline visual.
+RLS (fall back to the checks already in `lib/business-logic.ts`) → photo upload (URL text field) → booking timeline visual.
 Never cut: allocation conflict, booking overlap, ConflictModal, OverlapModal, ApprovalStepper, StatusChip.
+
+Audit Cycles, Advanced Reports, and Activity Log are now built (`/audits`, `/reports`, `/activity-log`, Asset Manager/Admin only) — no longer cut-scope.

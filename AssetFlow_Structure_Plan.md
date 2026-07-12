@@ -26,7 +26,13 @@ Instead, the system below **is already cleanly split by responsibility** — thi
 
 **Organization Setup** (`app/org-setup/*`, admin-only): Departments (name/head/parent/status, Activate/Deactivate toggle), Categories (name + custom fields, duplicate-name guard), Employee Directory (role change + department assignment, self-elevation blocked).
 
-**Status:** all of the above is built, working, and was independently re-audited this session via a full file-by-file re-read (all 14 pages, all 18 components) — no defects found.
+**Audit Cycles** (`app/audits`, Asset Manager/Admin): start an audit scoped by department or location, auto-seeds a checklist of every in-scope asset, check each as Verified/Missing/Damaged, close the cycle — any still-Missing asset is auto-set to Lost via the same `setAssetStatus` used elsewhere.
+
+**Reports** (`app/reports`, Asset Manager/Admin): asset utilization doughnut, department allocation summary, maintenance frequency by category, booking heatmap (date-selectable), due-for-maintenance and nearing-retirement alert lists — all computed live from Supabase, no mock data.
+
+**Activity Log** (`app/activity-log`, Asset Manager/Admin): reverse-chronological table of the last 200 logged actions across the whole app.
+
+**Status:** all of the above is built, working, and was independently re-audited this session via a full file-by-file re-read (all 14 original pages, all 18 original components) — no defects found. The three new pages above were added afterward in the same session and hand-verified against their business-logic functions and schema columns.
 
 ---
 
@@ -43,30 +49,30 @@ Instead, the system below **is already cleanly split by responsibility** — thi
 - `setAssetStatus` — Lost/Retired/Disposed, clears holder fields
 - `changeEmployeeRole` — admin-only, blocks self-elevation
 
-**API routes** (`app/api/*`, 15 total, all session-authenticated and role-checked): `allocate`, `return`, `book`, `book/cancel`, `book/reschedule`, `transfer/request`, `transfer/approve`, `transfer/reject`, `maintenance/raise`, `maintenance/approve`, `maintenance/reject`, `maintenance/assign-technician`, `maintenance/start-progress`, `maintenance/resolve`, `assets/status`.
+**API routes** (`app/api/*`, 18 total, all session-authenticated and role-checked): `allocate`, `return`, `book`, `book/cancel`, `book/reschedule`, `transfer/request`, `transfer/approve`, `transfer/reject`, `maintenance/raise`, `maintenance/approve`, `maintenance/reject`, `maintenance/assign-technician`, `maintenance/start-progress`, `maintenance/resolve`, `assets/status`, `audits/create`, `audits/check-item`, `audits/close`.
 
-**Data layer** (`supabase/schema.sql`, `rls.sql`): Postgres schema for departments, employees, categories, assets, allocations, transfer_requests, bookings, maintenance_requests; `overdue_allocations` view backing the dashboard KPI; RLS policies written but not applied (app-level checks in `lib/business-logic.ts` are the documented working fallback).
+**Activity logging** (`logActivity` in `lib/business-logic.ts`): every one of the 18 API routes plus every mutating Server Action (asset registration, department create/toggle, category create, employee role/department change, audit create) calls this after success — nothing was left unlogged.
 
-**Status:** all 15 routes + business-logic.ts + auth.ts + middleware.ts re-read fresh this session — auth checks, role gates, and conflict/overlap logic all verified consistent, no defects found.
+**Data layer** (`supabase/schema.sql` + `supabase/migration_02_audit_reports_log.sql`, `rls.sql`): Postgres schema for departments, employees, categories, assets, allocations, transfer_requests, bookings, maintenance_requests, audit_cycles, audit_items, activity_logs; `overdue_allocations` view backing the dashboard KPI; RLS policies written but not applied (app-level checks in `lib/business-logic.ts` are the documented working fallback).
+
+**Status:** all 18 routes + business-logic.ts + auth.ts + middleware.ts re-read fresh this session — auth checks, role gates, and conflict/overlap logic all verified consistent, no defects found.
 
 ---
 
-## Full task history (39 tracked)
+## Full task history (49 tracked)
 
-Scaffold & planning (#1–7) → Core CRUD screens (#8–14) → Route protection & API hardening (#15–18) → Department allocation, reschedule, quick actions (#19–21) → Backend deep audit fixes: unauthenticated routes, missing Admin gates, self-elevation bypass, dead department field, display bug (#22–26) → Frontend deep audit fixes: asset status lifecycle, transfer reject, department status toggle, prompt→modal (#27–30) → Login/status diagnosis, full endpoint+page audit, git status check, status report (#31–34) → Single-file HTML reference doc mining teammate's stray GitHub push for Reports/Audit Cycles/Activity Log UI ideas (#35) → this plan + exhaustive file-by-file re-verification of all 51 source files + README architecture map (#36–39).
+Scaffold & planning (#1–7) → Core CRUD screens (#8–14) → Route protection & API hardening (#15–18) → Department allocation, reschedule, quick actions (#19–21) → Backend deep audit fixes: unauthenticated routes, missing Admin gates, self-elevation bypass, dead department field, display bug (#22–26) → Frontend deep audit fixes: asset status lifecycle, transfer reject, department status toggle, prompt→modal (#27–30) → Login/status diagnosis, full endpoint+page audit, git status check, status report (#31–34) → Single-file HTML reference doc mining teammate's stray GitHub push for Reports/Audit Cycles/Activity Log UI ideas (#35) → structure plan + exhaustive file-by-file re-verification of all 51 source files + README architecture map (#36–39) → **Audit Cycles, Reports, and Activity Log built into the live app**: DB migration, business-logic functions, 3 new API routes, activity logging wired into all 19 existing mutation points, 3 new pages, nav updates, full verification pass (#40–49).
 
 ---
 
 ## Still open (not blockers — see cut-scope order)
 
-1. **Audit Cycles** — teammate's stray commit has a working reference implementation (scope by dept/location, checklist, discrepancy report, auto-Lost on close). Not in the live app.
-2. **Activity Log** — same source, one `logAction()` call per mutation. Not in the live app.
-3. **Advanced Reports** — utilization/department/maintenance-frequency charts, booking heatmap. Not in the live app; plain KPI cards stand in.
-4. RLS policies (optional, app-level checks already cover this).
-5. Asset photo upload, booking timeline visual.
+1. RLS policies (optional, app-level checks already cover this).
+2. Asset photo upload, booking timeline visual.
 
-None of these block a working demo. All three UI-idea items are viewable now in `AssetFlow_Reference.html`.
+Audit Cycles, Activity Log, and Advanced Reports are no longer cut-scope — they're live at `/audits`, `/activity-log`, `/reports`. The old reference-only versions are still viewable in `AssetFlow_Reference.html` for comparison, but the real pages now run on live Supabase data.
 
 ## Also outstanding
-- Dhruv's stray `dist/`/`src/` Vite files are still in the GitHub repo — recommend deleting before judging.
-- Tasks #27–30's code (asset status lifecycle, transfer reject, department toggle, modal fixes) is local-only, not yet pushed.
+- **Run `supabase/migration_02_audit_reports_log.sql`** in the Supabase SQL editor (after `schema.sql`) — the new pages will error without it.
+- Dhruv pushed a third overwrite of the real app (`a9e9d9d "Deploy complete working Vite SPA"`) directly to `main`, deleting every real file. Recovered via merge (kept local HEAD versions) rather than force-push this time. Going forward, any of Dhruv's Vite work should go to a separate branch, never `main`.
+- Dhruv's stray `dist/`/`src/` Vite files should be removed from the repo (`git rm -r dist src`) once the merge is confirmed pushed.
