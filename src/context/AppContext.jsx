@@ -410,6 +410,10 @@ export const AppProvider = ({ children }) => {
 
   // Organization Setup
   const createDepartment = (name, headId, parentId) => {
+    if (currentUser?.role !== 'Admin') {
+      addNotification('Permission Denied', 'Only Admins can create departments.', 'danger');
+      return { success: false, message: 'Only Admins can perform this action.' };
+    }
     const newDept = {
       id: `d-${Date.now()}`,
       name,
@@ -419,14 +423,24 @@ export const AppProvider = ({ children }) => {
     };
     setDepartments(prev => [...prev, newDept]);
     logAction('Create Department', `Department '${name}' created.`);
+    return { success: true };
   };
 
   const editDepartment = (id, name, headId, parentId, status) => {
+    if (currentUser?.role !== 'Admin') {
+      addNotification('Permission Denied', 'Only Admins can modify departments.', 'danger');
+      return { success: false, message: 'Only Admins can perform this action.' };
+    }
     setDepartments(prev => prev.map(d => d.id === id ? { ...d, name, headId: headId || null, parentId: parentId || null, status } : d));
     logAction('Modify Department', `Department '${name}' modified. Status: ${status}.`);
+    return { success: true };
   };
 
   const createCategory = (name, customFields) => {
+    if (currentUser?.role !== 'Admin') {
+      addNotification('Permission Denied', 'Only Admins can create categories.', 'danger');
+      return { success: false, message: 'Only Admins can perform this action.' };
+    }
     const newCat = {
       id: `c-${Date.now()}`,
       name,
@@ -434,14 +448,24 @@ export const AppProvider = ({ children }) => {
     };
     setCategories(prev => [...prev, newCat]);
     logAction('Create Asset Category', `Category '${name}' created.`);
+    return { success: true };
   };
 
   const editCategory = (id, name, customFields) => {
+    if (currentUser?.role !== 'Admin') {
+      addNotification('Permission Denied', 'Only Admins can modify categories.', 'danger');
+      return { success: false, message: 'Only Admins can perform this action.' };
+    }
     setCategories(prev => prev.map(c => c.id === id ? { ...c, name, fields: customFields } : c));
     logAction('Modify Asset Category', `Category '${name}' updated.`);
+    return { success: true };
   };
 
   const updateEmployeeRoleAndDept = (employeeId, role, departmentId, status) => {
+    if (currentUser?.role !== 'Admin') {
+      addNotification('Permission Denied', 'Only Admins can edit employee access.', 'danger');
+      return { success: false, message: 'Only Admins can perform this action.' };
+    }
     setEmployees(prev => prev.map(e => e.id === employeeId ? { ...e, role, departmentId, status } : e));
     const empName = employees.find(e => e.id === employeeId)?.name || 'Employee';
     logAction('Update Employee Details', `Employee '${empName}' updated: Role -> ${role}, Department -> ${departmentId}, Status -> ${status}.`);
@@ -450,6 +474,7 @@ export const AppProvider = ({ children }) => {
     if (currentUser && currentUser.id === employeeId) {
       setCurrentUser(prev => ({ ...prev, role, departmentId, status }));
     }
+    return { success: true };
   };
 
   // Asset Directory Operations
